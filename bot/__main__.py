@@ -44,7 +44,7 @@ def stats(update, context):
     mem_t = get_readable_file_size(memory.total)
     mem_a = get_readable_file_size(memory.available)
     mem_u = get_readable_file_size(memory.used)
-    stats = f'<b>•• ━━ ASI Mirror Bot ━━ ••</b>\n\n' \
+    stats = f'<b>•• ━━ TERMINATOR ━━ ••</b>\n\n' \
             f'<b>Rᴜɴɴɪɴɢ Sɪɴᴄᴇ</b>: {currentTime}\n' \
             f'<b>Sᴛᴀʀᴛᴇᴅ Aᴛ</b>: {last_commit}\n\n' \
             f'<b>DISK INFO</b>\n' \
@@ -58,15 +58,14 @@ def stats(update, context):
             f'<b><i>CPU</i></b>: {cpuUsage}%\n' \
             f'<b><i>RAM</i></b>: {mem_p}%\n' \
             f'<b><i>DISK</i></b>: {disk}%\n\n' \
-            f'<b>•• ━ ★彡[ᴍᴀᴅᴇ ᴡɪᴛʜ ʟᴏᴠᴇ ʙʏ ᴍᴀʜɪᴛʜ]彡★ ━ ••</b>\n\n'
+            f'<b>•• ━ ★彡[ᴍᴀᴅᴇ ᴡɪᴛʜ ʟᴏᴠᴇ ʙʏ terminator]彡★ ━ ••</b>\n\n'
     sendMessage(stats, context.bot, update.message)
 
 
 def start(update, context):
     buttons = ButtonMaker()
-    buttons.buildbutton("Mʏ Owner", "https://t.me/Mahith1211")
-    buttons.buildbutton("Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ", "https://t.me/ASIMIRRORUPDATESS")
-    buttons.buildbutton("Jᴏɪɴ ᴏᴜʀ ᴀɴɪᴍᴇ ᴄʜᴀɴɴᴇʟ", "https://t.me/PokemonJourneysEngDubsub")
+    buttons.buildbutton("Mʏ Owner", "https://t.me/terminator090")
+    buttons.buildbutton("Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ", "https://t.me/cloudstation9")
     reply_markup = InlineKeyboardMarkup(buttons.build_menu(2))
     if CustomFilters.authorized_user(update) or CustomFilters.authorized_chat(update):
         start_string = f'''Hey! Ms/Mr,\n
@@ -171,7 +170,7 @@ help_string_telegraph = f'''<br>
 '''
 
 help = telegraph.create_page(
-        title='ASI-Mirror & Leech Help',
+        title='Termi-Mirror & Leech Help',
         content=help_string_telegraph,
     )["path"]
 
