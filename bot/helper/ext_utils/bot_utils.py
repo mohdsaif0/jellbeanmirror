@@ -1,24 +1,16 @@
-import shutil
-import time
+from re import match as re_match, findall as re_findall
+from threading import Thread, Event
+from time import time
 from math import ceil
 from html import escape
-from re import findall as re_findall, match as re_match
-from threading import Event, Thread
-from urllib.request import urlopen
-
-import psutil
-from psutil import cpu_percent, disk_usage, virtual_memory
+from psutil import virtual_memory, cpu_percent, disk_usage
 from requests import head as rhead
+from urllib.request import urlopen
 from telegram import InlineKeyboardMarkup
-from telegram.error import RetryAfter
-from telegram.ext import CallbackQueryHandler
-from telegram.message import Message
-from telegram.update import Update
 
-from bot import *
 from bot.helper.telegram_helper.bot_commands import BotCommands
+from bot import download_dict, download_dict_lock, STATUS_LIMIT, botStartTime, DOWNLOAD_DIR
 from bot.helper.telegram_helper.button_build import ButtonMaker
-
 
 MAGNET_REGEX = r"magnet:\?xt=urn:btih:[a-zA-Z0-9]*"
 
@@ -29,19 +21,20 @@ PAGE_NO = 1
 
 
 class MirrorStatus:
-    STATUS_UPLOADING = "Uploading..."
-    STATUS_DOWNLOADING = "Downloading..."
-    STATUS_CLONING = "Cloning..."
-    STATUS_WAITING = "Queued..."
-    STATUS_FAILED = "Failed. Cleaning Download..."
-    STATUS_PAUSE = "Paused..."
-    STATUS_ARCHIVING = "Archiving..."
-    STATUS_EXTRACTING = "Extracting..."
-    STATUS_SPLITTING = "Splitting..."
-    STATUS_CHECKING = "CheckingUp..."
-    STATUS_SEEDING = "Seeding..."
+    STATUS_UPLOADING = "Uploading...📤"
+    STATUS_DOWNLOADING = "Downloading...📥"
+    STATUS_CLONING = "Cloning...♻️"
+    STATUS_WAITING = "Queued...💤"
+    STATUS_FAILED = "Failed 🚫. Cleaning Download..."
+    STATUS_PAUSE = "Paused...⛔️"
+    STATUS_ARCHIVING = "Archiving...🔐"
+    STATUS_EXTRACTING = "Extracting...📂"
+    STATUS_SPLITTING = "Splitting...✂️"
+    STATUS_CHECKING = "CheckingUp...📝"
+    STATUS_SEEDING = "Seeding...🌧"
 
 SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
 
 class setInterval:
     def __init__(self, interval, action):
@@ -113,9 +106,8 @@ def get_progress_bar_string(status):
     p = 0 if total == 0 else round(completed * 100 / total)
     p = min(max(p, 0), 100)
     cFull = p // 8
-    p_str = '█' * cFull
-    max_size = 100 // 8
-    p_str += ' ' * (max_size - cFull)
+    p_str = '▰' * cFull
+    p_str += '▱' * (12 - cFull)
     p_str = f"[{p_str}]"
     return p_str
 
@@ -129,7 +121,6 @@ def get_readable_message():
             if PAGE_NO > pages and pages != 0:
                 globals()['COUNT'] -= STATUS_LIMIT
                 globals()['PAGE_NO'] -= 1
-        msg = f"<b>Total Tasks : {tasks}</b>\n\n"   
         for index, download in enumerate(list(download_dict.values())[COUNT:], start=1):
             msg += f"<b>Name:</b> <code>{escape(str(download.name()))}</code>"
             msg += f"\n<b>Status:</b> <i>{download.status()}</i>"
@@ -139,46 +130,39 @@ def get_readable_message():
                 MirrorStatus.STATUS_SPLITTING,
                 MirrorStatus.STATUS_SEEDING,
             ]:
-                msg += f"\n<code>{get_progress_bar_string(download)}</code> {download.progress()}"
+                msg += f"\n{get_progress_bar_string(download)} {download.progress()}"
                 if download.status() == MirrorStatus.STATUS_CLONING:
                     msg += f"\n<b>Cloned:</b> {get_readable_file_size(download.processed_bytes())} of {download.size()}"
                 elif download.status() == MirrorStatus.STATUS_UPLOADING:
                     msg += f"\n<b>Uploaded:</b> {get_readable_file_size(download.processed_bytes())} of {download.size()}"
                 else:
                     msg += f"\n<b>Downloaded:</b> {get_readable_file_size(download.processed_bytes())} of {download.size()}"
-                # msg += f"<b>Elapsed:</b>{time() - self.message.date.timestamp()}"    
                 msg += f"\n<b>Speed:</b> {download.speed()} | <b>ETA:</b> {download.eta()}"
                 try:
-                    f"\n<b>Engine:</b> Aria2 | <b> 🌱 Seeders :</b> {download.aria_download().num_seeders}"
-                    f"<b>🍀 Peers :</b> {download.aria_download().connections}"
+                    msg += f"\n<b>Seeders:</b> {download.aria_download().num_seeders}" \
+                           f" | <b>Peers:</b> {download.aria_download().connections}"
                 except:
                     pass
                 try:
-                    msg += f"\n<b>Engine:</b> qBittorrent | <b>🌍:</b> {download.torrent_info().num_leechs} | <b>🌱:</b> {download.torrent_info().num_seeds}"
+                    msg += f"\n<b>Seeders:</b> {download.torrent_info().num_seeds}" \
+                           f" | <b>Leechers:</b> {download.torrent_info().num_leechs}"
                 except:
                     pass
-                if download.message.from_user.username:
-                    uname = f'<a href="tg://user?id={download.message.from_user.id}">{download.message.from_user.username}</a>'
-                else:
-                    uname = f'<a href="tg://user?id={download.message.from_user.id}">{download.message.from_user.first_name}</a>'
-                msg += f'\n<b>User:</b> <code>{uname}</code> (<code>{download.message.from_user.id}</code>)' 
-                msg += f"\n<b>To Stop:</b> <code>/{BotCommands.CancelMirror} {download.gid()}</code>"
+                if download.message.chat.type != 'private':
+                    try:
+                        chatid = str(download.message.chat.id)[4:]
+                        msg += f'\n<b>Source Msg: </b><a href="https://t.me/c/{chatid}/{download.message.message_id}">Click Here</a>'
+                    except:
+                        pass
+                msg += f'\n<b>User:</b> ️<code>{download.message.from_user.first_name}</code>️(<code>{download.message.from_user.id}</code>)'
+                msg += f"\n<b>To Stop:</b><code>/{BotCommands.CancelMirror} {download.gid()}</code>"
             elif download.status() == MirrorStatus.STATUS_SEEDING:
                 msg += f"\n<b>Size: </b>{download.size()}"
                 msg += f"\n<b>Speed: </b>{get_readable_file_size(download.torrent_info().upspeed)}/s"
                 msg += f" | <b>Uploaded: </b>{get_readable_file_size(download.torrent_info().uploaded)}"
                 msg += f"\n<b>Ratio: </b>{round(download.torrent_info().ratio, 3)}"
                 msg += f" | <b>Time: </b>{get_readable_time(download.torrent_info().seeding_time)}"
-                if download.message.from_user.username:
-                    uname = f'<a href="tg://user?id={download.message.from_user.id}">{download.message.from_user.username}</a>'
-                else:
-                    uname = f'<a href="tg://user?id={download.message.from_user.id}">{download.message.from_user.first_name}</a>'
-                msg += f'\n<b>User:</b> <code>{uname}</code> (<code>{download.message.from_user.id}</code>)' 
-                msg += f"\n<b>To Stop:</b> <code>/{BotCommands.CancelMirror} {download.gid()}</code>"
-                msg += (
-                    f"\n<code>/{BotCommands.CancelMirror} {download.gid()}</code>\n\n"
-                )
-                msg += "▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                msg += f"\n<code>/{BotCommands.CancelMirror} {download.gid()}</code>"
             else:
                 msg += f"\n<b>Size: </b>{download.size()}"
             msg += "\n\n"
@@ -204,21 +188,11 @@ def get_readable_message():
         if STATUS_LIMIT is not None and tasks > STATUS_LIMIT:
             msg += f"<b>Page:</b> {PAGE_NO}/{pages} | <b>Tasks:</b> {tasks}\n"
             buttons = ButtonMaker()
-            buttons.sbutton("Refresh", str(ONE))
-            buttons.sbutton("Stats", str(THREE))
-            buttons.sbutton("Close", str(TWO))
-            sbutton = InlineKeyboardMarkup(buttons.build_menu(3))
-            if STATUS_LIMIT is not None and tasks > STATUS_LIMIT:
-                msg += f"\n<b>Page:</b> <code>{PAGE_NO}</code>/<code>{pages}</code>\n\n"
-                buttons = ButtonMaker()
-                buttons.sbutton("Previous Page", "pre")
-                buttons.sbutton("Refresh", str(ONE))
-                buttons.sbutton("Next Page", "nex")
-                buttons.sbutton("Stats", str(THREE))
-                buttons.sbutton("Close", str(TWO))
-                button = InlineKeyboardMarkup(buttons.build_menu(3))
-                return msg + bmsg, button
-            return msg + bmsg, sbutton
+            buttons.sbutton("Previous", "status pre")
+            buttons.sbutton("Next", "status nex")
+            button = InlineKeyboardMarkup(buttons.build_menu(2))
+            return msg + bmsg, button
+        return msg + bmsg, ""
 
 def turn(data):
     try:
@@ -271,6 +245,9 @@ def is_gdtot_link(url: str):
     url = re_match(r'https?://.+\.gdtot\.\S+', url)
     return bool(url)
 
+def is_appdrive_link(url: str):
+    url = re_match(r'https?://(?:\S*\.)?(?:appdrive|driveapp)\.in/\S+', url)
+    return bool(url)
 def is_mega_link(url: str):
     return "mega.nz" in url or "mega.co.nz" in url
 
@@ -312,65 +289,3 @@ def get_content_type(link: str) -> str:
             content_type = None
     return content_type
 
-ONE, TWO, THREE = range(3)
-
-
-def refresh(update, context):
-    query = update.callback_query
-    query.edit_message_text(text="Refreshing Status...⏳")
-    sleep(2)
-    update_all_messages()
-
-
-def close(update, context):
-    chat_id = update.effective_chat.id
-    user_id = update.callback_query.from_user.id
-    bot = context.bot
-    query = update.callback_query
-    admins = bot.get_chat_member(chat_id, user_id).status in [
-        "creator",
-        "administrator",
-    ] or user_id in [OWNER_ID]
-    if admins:
-        delete_all_messages()
-    else:
-        query.answer(text="You Don't Have Admin Rights!", show_alert=True)
-
-
-def pop_up_stats(update, context):
-    query = update.callback_query
-    stats = bot_sys_stats()
-    query.answer(text=stats, show_alert=True)
-
-
-def bot_sys_stats():
-    currentTime = get_readable_time(time() - botStartTime)
-    cpu = psutil.cpu_percent()
-    mem = psutil.virtual_memory().percent
-    disk = psutil.disk_usage(DOWNLOAD_DIR).percent
-    total, used, free = shutil.disk_usage(DOWNLOAD_DIR)
-    total = get_readable_file_size(total)
-    used = get_readable_file_size(used)
-    free = get_readable_file_size(free)
-    recv = get_readable_file_size(psutil.net_io_counters().bytes_recv)
-    sent = get_readable_file_size(psutil.net_io_counters().bytes_sent)
-    stats = f"""
-BOT UPTIME 🕐 : {currentTime}
-
-CPU : {cpu}%
-RAM : {mem}%
-
-DISK : {disk}%
-TOTAL : {total}
-
-USED : {used} || FREE : {free}
-SENT : {sent} || RECV : {recv}
-"""
-    return stats
-
-
-dispatcher.add_handler(CallbackQueryHandler(refresh, pattern="^" + str(ONE) + "$"))
-dispatcher.add_handler(CallbackQueryHandler(close, pattern="^" + str(TWO) + "$"))
-dispatcher.add_handler(
-    CallbackQueryHandler(pop_up_stats, pattern="^" + str(THREE) + "$")
-)
